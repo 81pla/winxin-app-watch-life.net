@@ -15,9 +15,13 @@ var util = require('../../utils/util.js');
 var WxParse = require('../../wxParse/wxParse.js');
 var wxApi = require('../../utils/wxApi.js')
 var wxRequest = require('../../utils/wxRequest.js')
-var auth = require('../../utils/auth.js');
+var Auth = require('../../utils/auth.js');
 import config from '../../utils/config.js'
 var app = getApp();
+
+var webSiteName=config.getWebsiteName;
+var domain =config.getDomain
+
 
 Page({
   data: {
@@ -32,34 +36,45 @@ Page({
         content: '',
         hidden: true
     },
+    userInfo: {},
+    isLoginPopup: false,
+    openid:"",
+    system:"",
+    webSiteName:webSiteName,
+    domain:domain
    
     
   },
   onLoad: function (options) {
-    wx.setNavigationBarTitle({
-      title: '关于WordPress微信小程序',
-      success: function (res) {
-        // success
-      }
-    });
-    
-    this.fetchData(config.getAboutId);
+    var self = this;    
+    Auth.setUserInfoData(self); 
+    Auth.checkLogin(self);
+    this.fetchData();
+    wx.getSystemInfo({
+          success: function (t) {
+          var system = t.system.indexOf('iOS') != -1 ? 'iOS' : 'Android';
+          self.setData({ system: system });
+
+        }
+      })
   },
   praise: function () {     
       
       var self = this;
-      var minAppType = config.getMinAppType;
-      if (minAppType == "0") {
-          if (app.globalData.isGetOpenid) {
+      var enterpriseMinapp = self.data.pageData.enterpriseMinapp;
+      var system  =self.data.system;
+      var praiseWord=self.data.pageData.praiseWord;
+      if (enterpriseMinapp == "1"  && system=='Android') {
+          if (self.data.openid) {
               wx.navigateTo({
-                  url: '../pay/pay?flag=2&openid=' + app.globalData.openid + '&postid=' + config.getAboutId
+                  url: '../pay/pay?flag=2&openid=' + self.data.openid + '&postid=' + config.getAboutId+'&praiseWord='+praiseWord
               })
           }
           else {
-              self.userAuthorization();
-          }
+                Auth.checkSession(self,'isLoginNow');
+            }
       }
-      else {
+      else if(enterpriseMinapp == "0" || system=='iOS') {
 
           var src = config.getZanImageUrl;
           wx.previewImage({
@@ -78,7 +93,7 @@ Page({
 
       });
 
-      this.fetchData(config.getAboutId);
+      this.fetchData();
       //消除下刷新出现空白矩形的问题。
       wx.stopPullDownRefresh()
 
@@ -98,10 +113,10 @@ Page({
   gotowebpage:function()
   {
       var self=this;
-      var minAppType = config.getMinAppType;
+      var enterpriseMinapp = self.data.pageData.enterpriseMinapp;
       var url = '';
-      if (minAppType == "0") {
-          url = '../webpage/webpage';
+      if (enterpriseMinapp == "1") {
+          url = '../webpage/webpage?';
           wx.navigateTo({
               url: url
           })
@@ -186,59 +201,34 @@ Page({
       }
 
   },
-
-  userAuthorization: function () {
-      var self = this;
-      // 判断是否是第一次授权，非第一次授权且授权失败则进行提醒
-      wx.getSetting({
-          success: function success(res) {
-              console.log(res.authSetting);
-              var authSetting = res.authSetting;
-              if (util.isEmptyObject(authSetting)) {
-                  console.log('第一次授权');
-              } else {
-                  console.log('不是第一次授权', authSetting);
-                  // 没有授权的提醒
-                  if (authSetting['scope.userInfo'] === false) {
-                      wx.showModal({
-                          title: '用户未授权',
-                          content: '如需正常使用评论、点赞、赞赏等功能需授权获取用户信息。是否在授权管理中选中“用户信息”?',
-                          showCancel: true,
-                          cancelColor: '#296fd0',
-                          confirmColor: '#296fd0',
-                          confirmText: '设置权限',
-                          success: function (res) {
-                              if (res.confirm) {
-                                  console.log('用户点击确定')
-                                  wx.openSetting({
-                                      success: function success(res) {
-                                          console.log('打开设置', res.authSetting);
-                                          var scopeUserInfo = res.authSetting["scope.userInfo"];
-                                          if (scopeUserInfo) {
-                                              auth.getUsreInfo();
-                                          }
-                                      }
-                                  });
-                              }
-                          }
-                      })
-                  }
-              }
-          }
-      });
+  agreeGetUser: function (e) {
+  
+    let self= this;
+    Auth.checkAgreeGetUser(e,app,self,'0');;
   },
-  fetchData: function (id) {
+  closeLoginPopup() {
+      this.setData({ isLoginPopup: false });
+  },
+  openLoginPopup() {
+      this.setData({ isLoginPopup: true });
+  }
+    ,
+  fetchData: function () {
     var self = this; 
-    var getPageRequest = wxRequest.getRequest(Api.getPageByID(id));
+    var getPageRequest = wxRequest.getRequest(Api.getAboutPage());
     getPageRequest.then(response =>{
         console.log(response);
-        WxParse.wxParse('article', 'html', response.data.content.rendered, self, 5);
+        wx.setNavigationBarTitle({
+            title: response.data.post_title,
+            success: function (res) {
+              // success
+            }
+          });
+        WxParse.wxParse('article', 'html', response.data.post_content, self, 5);
 
         self.setData({
             pageData: response.data,
-            // wxParseData: WxParse('md',response.data.content.rendered)
-            //wxParseData: WxParse.wxParse('article', 'html', response.data.content.rendered, self, 5)
-        });
+              });
         self.setData({
             display: 'block'
         });
@@ -275,7 +265,7 @@ Page({
     })    
     .then(res =>{
         if (!app.globalData.isGetOpenid) {
-            auth.getUsreInfo();
+           
         }
 
     })

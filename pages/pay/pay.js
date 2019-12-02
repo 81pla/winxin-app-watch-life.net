@@ -18,7 +18,11 @@ var wxApi = require('../../utils/wxApi.js');
 var wxRequest = require('../../utils/wxRequest.js');
 import config from '../../utils/config.js'
 
+var webSiteName= config.getWebsiteName;
+var domain =config.getDomain
+
 var app = getApp();
+var praiseWord="鼓励";
 Page({
   data: {    
     prices: [
@@ -28,7 +32,9 @@ Page({
     postid:'',
     total_fee:'',
     template_id: config.getPayTemplateId,
-    flag:'1'
+    flag:'1',
+    webSiteName:webSiteName,
+    domain:domain
   },
 
   /**
@@ -41,11 +47,13 @@ Page({
     var openid = options.openid;
     var postid = options.postid;
     var flag = options.flag;
+    praiseWord=options.praiseWord;
 
     that.setData({
       openid: openid,
       postid: postid,
-      flag:flag
+      flag:flag,
+      praiseWord:praiseWord
         });
 
   },
@@ -58,21 +66,20 @@ Page({
 
 
   /**
-   * 选中赞赏金额
+   * 选中鼓励金额
    */
   selectItem: function (event) {
-    var total_fee = event.currentTarget.dataset.item;
-    var money = total_fee ;
-    total_fee = total_fee*100;
+    var totalfee = event.currentTarget.dataset.item;
+    var money = totalfee ;
+    totalfee = totalfee;
     var that = this;    
     var url = Api.postPraiseUrl();
     var data = {
       openid: that.data.openid,
-      total_fee: total_fee
+      totalfee: totalfee
     }
-    var postLikeRequest = wxRequest.getRequest(url, data);
-    postLikeRequest
-      .then(response => {
+    var postPraiseRequest = wxRequest.postRequest(url, data);
+    postPraiseRequest.then(response => {
         if (response.data) {
           var temp = response.data;
           wx.requestPayment({
@@ -82,35 +89,33 @@ Page({
             'signType': 'MD5',
             'paySign': response.data.paySign,
             'success': function (res) {
-
               var url = Api.updatePraiseUrl();
-
               var data ={
-                openid: app.globalData.openid,
+                openid: that.data.openid,
                 postid: that.data.postid,
                 orderid: response.data.nonceStr,
-                money: total_fee
+                money: totalfee
               }
               var form_id = response.data.package;
-              form_id = form_id.substring(10);
-              
-              var updatePraiseRequest = wxRequest.postRequest(url, data); //更新赞赏数据
-              updatePraiseRequest
-                .then(response => {
+              form_id = form_id.substring(10);              
+              var updatePraiseRequest = wxRequest.postRequest(url, data); //更新鼓励数据
+              updatePraiseRequest.then(response => {
                   console.log(response.data.message);
-                }).then(res => {
+                })
+              .then(res => {
                   wx.showToast({
-                    title: '谢谢赞赏！',
-                    uration: 2000,
+                    title: '谢谢'+praiseWord+'！',
+                    duration: 2000,
                     success: function () {
                         data =
                             {
-                                openid: app.globalData.openid,
+                                openid: that.data.openid,
                                 postid: that.data.postid,
                                 template_id: that.data.template_id,
                                 form_id: form_id,
                                 total_fee: money,
-                                flag: that.data.flag
+                                flag: that.data.flag,
+                                fromUser: "None"
                             };
                         url = Api.sendMessagesUrl();
                         var sendMessageRequest = wxRequest.postRequest(url, data);
@@ -145,7 +150,7 @@ Page({
               if (res.errMsg =='requestPayment:fail cancel')
               {
                 wx.showToast({
-                  title: '取消赞赏',
+                  title: '取消'+praiseWord,
                   icon: 'success'
                 });
               }

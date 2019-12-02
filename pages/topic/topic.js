@@ -12,26 +12,35 @@
 import config from '../../utils/config.js'
 var Api = require('../../utils/api.js');
 var util = require('../../utils/util.js');
-var auth = require('../../utils/auth.js');
+var Auth = require('../../utils/auth.js');
 var WxParse = require('../../wxParse/wxParse.js');
 var wxApi = require('../../utils/wxApi.js')
 var wxRequest = require('../../utils/wxRequest.js');
+var webSiteName= config.getWebsiteName;
+var domain =config.getDomain
 var app = getApp();
 Page({
     data: {
         text: "Page topic",
         categoriesList: {},
-        floatDisplay: "none"
+        floatDisplay: "none",
+        openid:"",
+        userInfo:{},
+        webSiteName:webSiteName,
+    domain:domain        
     },
     onLoad: function (options) {
+        Auth.setUserInfoData(this); 
+        Auth.checkLogin(this);
         wx.setNavigationBarTitle({
-            title: config.getWebsiteName+'-专题',
-            success: function (res) {
-                // success
-            }
+            title: '专题'
         });
         
         this.fetchCategoriesData();
+        
+    },
+    onShow:function(){            
+
     },
     //获取分类列表
     fetchCategoriesData: function () {
@@ -40,44 +49,52 @@ Page({
             categoriesList: []
         });
         //console.log(Api.getCategories());
-        var getCategoriesRequest = wxRequest.getRequest(Api.getCategories());
-        getCategoriesRequest.then(response => {
-            if (response.statusCode === 200) {
-                self.setData({
-                    floatDisplay: "block",
-                    categoriesList: self.data.categoriesList.concat(response.data.map(function (item) {
-                        if (typeof (item.category_thumbnail_image) == "undefined" || item.category_thumbnail_image == "") {
-                            item.category_thumbnail_image = "../../images/website.png";
-                        
-                        }
-                        item.subimg = "subscription.png";
-                        return item;
-                    })),
-                });
-            }
-            else {
-                console.log(response);
-            }
+        var getCategoriesIdsRequest = wxRequest.getRequest(Api.getCategoriesIds());
+        getCategoriesIdsRequest.then(res=>{
+            
 
-        })
-        .then(res=>{
-            if (!app.globalData.isGetOpenid) {
-                self.getUsreInfo();
-            }
-            else
+            var ids="";
+            var openid= self.data.openid
+            if(!res.data.Ids=="")
             {
-                setTimeout(function () {
-                    self.getSubscription();
-                }, 500);               
-
+                ids=res.data.Ids;
             }
+            var getCategoriesRequest = wxRequest.getRequest(Api.getCategories(ids,openid));
+                getCategoriesRequest.then(response => {
+                    if (response.statusCode === 200) {
+                        self.setData({
+                            floatDisplay: "block",
+                            categoriesList: self.data.categoriesList.concat(response.data.map(function (item) {
+                                if (typeof (item.category_thumbnail_image) == "undefined" || item.category_thumbnail_image == "") {
+                                    item.category_thumbnail_image = "../../images/website.png";
+                                
+                                }
+                                // item.subimg = "subscription.png";
+                                return item;
+                            })),
+                        });
+                    }
+                    else {
+                        console.log(response);
+                    }
+
+                    })
+                    // .then(res=>{
+                    //     if (self.data.openid) {                
+                    //         setTimeout(function () {
+                    //             self.getSubscription();
+                    //         }, 500);  
+                    //     }
+                        
+                    // })
+                    .catch(function (response) {
+                        console.log(response);
+
+                    }).finally(function () {
+
+                    })
         })
-        .catch(function (response) {
-            console.log(response);
-
-        }).finally(function () {
-
-            })
+        
     },
     onShareAppMessage: function () {
         return {
@@ -91,127 +108,14 @@ Page({
             }
         }
     },    
-    getUsreInfo: function () {
-        var self = this;
-        var wxLogin = wxApi.wxLogin();
-        var jscode = '';
-        wxLogin().then(response => {
-            jscode = response.code
-            var wxGetUserInfo = wxApi.wxGetUserInfo();
-            return wxGetUserInfo()
-        }).
-            //获取用户信息
-            then(response => {
-                console.log(response.userInfo);
-                console.log("成功获取用户信息(公开信息)");
-                app.globalData.userInfo = response.userInfo;
-                app.globalData.isGetUserInfo = true;
-                var url = Api.getOpenidUrl();
-                var data = {
-                    js_code: jscode,
-                    encryptedData: response.encryptedData,
-                    iv: response.iv,
-                    avatarUrl: response.userInfo.avatarUrl
-                }
-                var postOpenidRequest = wxRequest.postRequest(url, data);
-                //获取openid
-                postOpenidRequest.then(response => {
-                    if (response.data.status == '200') {
-                        //console.log(response.data.openid)
-                        console.log("openid 获取成功");
-                        app.globalData.openid = response.data.openid;
-                        app.globalData.isGetOpenid = true;
-
-                        setTimeout(function () {                            
-                            self.getSubscription();
-                        }, 500);
-                       
-                        
-                    }
-                    else {
-                        console.log(response.data.message);
-                    }
-                })
-            })
-            .catch(function (error) {
-                console.log('error: ' + error.errMsg);                
-            })
-    },
-    getSubscription: function () {
-        var self= this;
-        wx.showLoading({
-            title: '正在加载',
-            mask: true
-        })
-        if (app.globalData.isGetOpenid) {
-            var url = Api.getSubscription() + '?openid=' + app.globalData.openid;
-            var getSubscriptionRequest = wxRequest.getRequest(url);
-            getSubscriptionRequest.then(res => {
-                if (res.data.status == '200')
-                {
-                    var catList = res.data.subscription;
-                    var categoriesList = self.data.categoriesList;
-                    var newCategoriesList = [];
-                    if (catList && categoriesList) {
-                        for (var i = 0; i < categoriesList.length; i++) {
-                            var subimg = "subscription.png";
-                            var subflag = "0";
-
-                            for (var j = 0; j < catList.length; j++) {
-                                if (categoriesList[i].id == catList[j]) {
-                                    subimg = "subscription-on.png";
-                                    subflag = "1";
-                                }
-                                var category_thumbnail_image = "";
-                                if (typeof (categoriesList[i].category_thumbnail_image) == "undefined" || categoriesList[i].category_thumbnail_image == "") {
-                                    category_thumbnail_image = "../../images/website.png";
-                                }
-                                else {
-                                    category_thumbnail_image = categoriesList[i].category_thumbnail_image;
-                                }
-
-                            }
-                            var cat = {
-                                "category_thumbnail_image": category_thumbnail_image,
-                                "description": categoriesList[i].description,
-                                "name": categoriesList[i].name,
-                                "id": categoriesList[i].id,
-                                "subimg": subimg,
-                                "subflag": subflag
-                            }
-                            newCategoriesList.push(cat);
-                        }
-                        if (newCategoriesList.length > 0) {
-                            self.setData({
-                                floatDisplay: "block",
-                                categoriesList: newCategoriesList
-                            });
-                        }
-                    }
-
-                }
-                else{
-                    console.log(res);
-                }
-            }).finally(function () {
-                setTimeout(function () {
-                    wx.hideLoading();
-                }, 500)
-                wx.hideNavigationBarLoading();
-
-            })
-            
-        }
-
-    },
     postsub: function (e) {
         var self = this;
-        if (!app.globalData.isGetOpenid) {
-            self.userAuthorization();
+        if (!self.data.openid) {
+            Auth.checkSession(self,'isLoginNow');
         }
         else {
             var categoryid = e.currentTarget.dataset.id;
-            var openid = app.globalData.openid;
+            var openid = self.data.openid;
             var url = Api.postSubscription();
             var subflag = e.currentTarget.dataset.subflag;
             var data = {
@@ -339,8 +243,11 @@ Page({
             success: function success(res) {
                 console.log(res.authSetting);
                 var authSetting = res.authSetting;
-                if (util.isEmptyObject(authSetting)) {
+                if (!('scope.userInfo' in authSetting)) {
+                //if (util.isEmptyObject(authSetting)) {
                     console.log('第一次授权');
+                    self.setData({ isLoginPopup: true })
+
                 } else {
                     console.log('不是第一次授权', authSetting);
                     // 没有授权的提醒
@@ -360,7 +267,7 @@ Page({
                                             console.log('打开设置', res.authSetting);
                                             var scopeUserInfo = res.authSetting["scope.userInfo"];
                                             if (scopeUserInfo) {
-                                                self.getUsreInfo();
+                                                self.getUsreInfo(null);
                                             }
                                         }
                                     });
@@ -368,9 +275,49 @@ Page({
                             }
                         })
                     }
+                    else {
+                        auth.getUsreInfo(null);
+                    }
                 }
             }
         });
+    },
+    agreeGetUser: function (e) {        
+        let self= this;
+        Auth.checkAgreeGetUser(e,app,self,'0');   
+
+        setTimeout(function () {
+            self.fetchCategoriesData();             
+        }, 1000);
+        
+    },
+    closeLoginPopup() {
+        this.setData({ isLoginPopup: false });
+    },
+    openLoginPopup() {
+        this.setData({ isLoginPopup: true });
+    },
+    getOpenId(data) {
+        var url = Api.getOpenidUrl();
+        var self  = this;
+        var postOpenidRequest = wxRequest.postRequest(url, data);
+        //获取openid
+        postOpenidRequest.then(response => {
+            if (response.data.status == '200') {
+                //console.log(response.data.openid)
+                console.log("openid 获取成功");
+                app.globalData.openid = response.data.openid;
+                app.globalData.isGetOpenid = true;
+
+            }
+            else {
+                console.log(response);
+            }
+        }).then(res=>{
+            setTimeout(function () {
+                self.getSubscription();               
+            }, 500);
+        })
     },
     confirm: function () {
         this.setData({

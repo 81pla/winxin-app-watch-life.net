@@ -18,6 +18,8 @@ var wxRequest = require('../../utils/wxRequest.js')
 
 import config from '../../utils/config.js'
 var pageCount = config.getPageCount;
+var webSiteName= config.getWebsiteName;
+var domain =config.getDomain
 
 Page({
   data: {
@@ -39,6 +41,8 @@ Page({
     displaySwiper: "block",
     floatDisplay: "none",
     searchKey:"",
+    webSiteName:webSiteName,
+    domain:domain
   },
   formSubmit: function (e) {
     var url = '../list/list'
@@ -51,7 +55,7 @@ Page({
   },
   onShareAppMessage: function () {
 
-    var title = "分享“守望轩”";
+    var title = "分享“"+webSiteName+"”";
     var path =""
 
     if (this.data.categories && this.data.categories != 0)
@@ -78,13 +82,27 @@ Page({
       }
     }
   },
+  onReachBottom: function () {
+
+      var self = this;
+      if (!self.data.isLastPage) {
+          self.setData({
+              page: self.data.page + 1
+          });
+          console.log('当前页' + self.data.page);
+          this.fetchPostsData(self.data);
+      }
+      else {
+          console.log('最后一页');
+      }
+     
+  },
   reload:function(e)
   {
     var self = this;
     if (self.data.categories && self.data.categories != 0) {
       
       self.setData({
-       // categories: options.categoryID,
         isCategoryPage: "block",
         showallDisplay: "none",
         showerror: "none",
@@ -94,7 +112,6 @@ Page({
     }
     if (self.data.search && self.data.search != '') {
       self.setData({
-        //search: options.search,
         isSearchPage: "block",
         showallDisplay: "none",
         showerror: "none",
@@ -134,10 +151,7 @@ Page({
     }
     if (options.search && options.search != '') {
       wx.setNavigationBarTitle({
-        title: "搜索关键字："+options.search,
-        success: function (res) {
-          // success
-        }
+        title: "搜索"
       });
       self.setData({
         search: options.search,
